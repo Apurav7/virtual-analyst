@@ -1,0 +1,40 @@
+{
+  "name": "ecommerce-virtual-analyst",
+  "version": "0.1.0",
+  "description": "AI-powered virtual analyst for ecommerce websites - measures traffic, conversion, and user behavior",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:init": "node scripts/db-init.js",
+    "sync:now": "node jobs/daily-data-sync.ts",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "date-fns": "^2.30.0",
+    "dotenv": "^16.3.1",
+    "google-auth-library": "^9.0.0",
+    "googleapis": "^118.0.0",
+    "next": "^14.0.0",
+    "openai": "^4.26.0",
+    "pg": "^8.11.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "recharts": "^2.10.0"
+  },
+  "devDependencies": {
+    "@swc/core": "^1.15.33",
+    "@types/node": "^20.8.0",
+    "@types/pg": "^8.10.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "eslint": "^8.52.0",
+    "eslint-config-next": "^14.0.0",
+    "ts-node": "^10.9.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.2.0"
+  }
+}

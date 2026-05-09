@@ -1,0 +1,218 @@
+import { BetaAnalyticsDataClient } from '@google-analytics/data';
+import { google } from 'googleapis';
+
+/**
+ * Google Analytics 4 API Connector
+ * Fetches traffic data, user metrics, event data, and user journey information
+ */
+
+export interface GATrafficMetrics {
+  date: string;
+  source: string; // 'organic' | 'google_cpc' | 'direct', etc.
+  users: number;
+  newUsers: number;
+  sessions: number;
+  bounceRate: number;
+  avgSessionDuration: number;
+  eventCount: number;
+}
+
+export interface GAConversionMetrics {
+  date: string;
+  category: string;
+  source: string;
+  transactions: number;
+  transactionRevenue: number;
+  conversionRate: number;
+}
+
+export interface GAUserJourney {
+  sessionId: string;
+  userId: string;
+  source: string;
+  landingPage: string;
+  pageSequence: string[];
+  eventSequence: string[];
+  sessionDuration: number;
+  converted: boolean;
+  revenue: number;
+}
+
+class GAConnector {
+  private client: BetaAnalyticsDataClient;
+  private propertyId: string;
+
+  constructor(propertyId: string) {
+    this.propertyId = propertyId;
+    this.client = new BetaAnalyticsDataClient();
+  }
+
+  /**
+   * Fetch traffic metrics by source for a date range
+   */
+  async getTrafficBySource(
+    startDate: string,
+    endDate: string
+  ): Promise<GATrafficMetrics[]> {
+    try {
+      const response = await this.client.runReport({
+        property: `properties/${this.propertyId}`,
+        dateRanges: [
+          {
+            startDate,
+            endDate,
+          },
+        ],
+        metrics: [
+          { name: 'activeUsers' },
+          { name: 'newUsers' },
+          { name: 'sessions' },
+          { name: 'bounceRate' },
+          { name: 'averageSessionDuration' },
+          { name: 'eventCount' },
+        ],
+        dimensions: [
+          { name: 'date' },
+          { name: 'firstUserSource' },
+        ],
+      });
+
+      return this.parseTrafficResponse(response);
+    } catch (error) {
+      console.error('Error fetching GA traffic data:', error);
+      throw new Error('Failed to fetch Google Analytics traffic data');
+    }
+  }
+
+  /**
+   * Fetch conversion metrics by product category
+   */
+  async getConversionsByCategory(
+    startDate: string,
+    endDate: string
+  ): Promise<GAConversionMetrics[]> {
+    try {
+      const response = await this.client.runReport({
+        property: `properties/${this.propertyId}`,
+        dateRanges: [
+          {
+            startDate,
+            endDate,
+          },
+        ],
+        metrics: [
+          { name: 'purchasesTotalQuantity' },
+          { name: 'purchasesRevenue' },
+          { name: 'eventCount' },
+        ],
+        dimensions: [
+          { name: 'date' },
+          { name: 'itemCategory' },
+          { name: 'firstUserSource' },
+        ],
+      });
+
+      return this.parseConversionResponse(response);
+    } catch (error) {
+      console.error('Error fetching GA conversion data:', error);
+      throw new Error('Failed to fetch Google Analytics conversion data');
+    }
+  }
+
+  /**
+   * Fetch engagement metrics (time on page, scroll depth, etc.)
+   */
+  async getEngagementMetrics(
+    startDate: string,
+    endDate: string
+  ): Promise<Record<string, any>> {
+    try {
+      const response = await this.client.runReport({
+        property: `properties/${this.propertyId}`,
+        dateRanges: [
+          {
+            startDate,
+            endDate,
+          },
+        ],
+        metrics: [
+          { name: 'averageSessionDuration' },
+          { name: 'scrolledUsers' },
+          { name: 'engagedSessions' },
+          { name: 'engagementRate' },
+        ],
+        dimensions: [
+          { name: 'date' },
+          { name: 'pagePath' },
+        ],
+      });
+
+      return this.parseEngagementResponse(response);
+    } catch (error) {
+      console.error('Error fetching GA engagement data:', error);
+      throw new Error('Failed to fetch Google Analytics engagement data');
+    }
+  }
+
+  /**
+   * Parse traffic response from GA API
+   */
+  private parseTrafficResponse(response: any): GATrafficMetrics[] {
+    const metrics: GATrafficMetrics[] = [];
+
+    if (!response.rows) return metrics;
+
+    response.rows.forEach((row: any) => {
+      metrics.push({
+        date: row.dimensionValues[0].value,
+        source: row.dimensionValues[1].value,
+        users: parseInt(row.metricValues[0].value),
+        newUsers: parseInt(row.metricValues[1].value),
+        sessions: parseInt(row.metricValues[2].value),
+        bounceRate: parseFloat(row.metricValues[3].value),
+        avgSessionDuration: parseFloat(row.metricValues[4].value),
+        eventCount: parseInt(row.metricValues[5].value),
+      });
+    });
+
+    return metrics;
+  }
+
+  /**
+   * Parse conversion response
+   */
+  private parseConversionResponse(response: any): GAConversionMetrics[] {
+    const metrics: GAConversionMetrics[] = [];
+
+    if (!response.rows) return metrics;
+
+    response.rows.forEach((row: any) => {
+      const transactions = parseInt(row.metricValues[0].value) || 0;
+      const revenue = parseFloat(row.metricValues[1].value) || 0;
+      const events = parseInt(row.metricValues[2].value) || 1;
+
+      metrics.push({
+        date: row.dimensionValues[0].value,
+        category: row.dimensionValues[1].value,
+        source: row.dimensionValues[2].value,
+        transactions,
+        transactionRevenue: revenue,
+        conversionRate: transactions > 0 ? (transactions / events) * 100 : 0,
+      });
+    });
+
+    return metrics;
+  }
+
+  /**
+   * Parse engagement response
+   */
+  private parseEngagementResponse(response: any): Record<string, any> {
+    return {
+      rows: response.rows || [],
+      totalUsers: response.metadata?.currencyCode,
+    };
+  }
+}
+
+export default GAConnector;
