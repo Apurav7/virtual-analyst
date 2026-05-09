@@ -7,6 +7,9 @@ export default function DashboardPage() {
   const [dashboardData, setDashboardData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -25,17 +28,64 @@ export default function DashboardPage() {
     };
 
     fetchDashboardData();
+    
+    // Load last sync time from localStorage
+    const savedSyncTime = localStorage.getItem('lastSyncTime');
+    if (savedSyncTime) {
+      setLastSyncTime(savedSyncTime);
+    }
   }, [date]);
 
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setDate(e.target.value);
   };
 
+  const handleRefresh = async () => {
+    try {
+      setSyncing(true);
+      setSyncMessage(null);
+      
+      const response = await fetch('/api/sync/refresh', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SYNC_KEY || 'dev-key'}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Sync request failed');
+      }
+
+      const result = await response.json();
+      const syncTime = new Date().toLocaleString();
+      setLastSyncTime(syncTime);
+      localStorage.setItem('lastSyncTime', syncTime);
+      setSyncMessage('✅ Data synced successfully! Refresh the page to see latest data.');
+      
+      // Auto-refresh dashboard data after sync
+      setTimeout(() => {
+        window.location.reload();
+      }, 2000);
+    } catch (err) {
+      setSyncMessage(`❌ Sync failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <div className="dashboard-container">
       <header className="dashboard-header">
-        <h1>🎯 Virtual Data Analyst</h1>
-        <p>AI-Powered Ecommerce Analytics Dashboard</p>
+        <div className="header-content">
+          <div className="header-left">
+            <img src="https://www.farmlokal.com/logo.png" alt="Farmlokal" className="logo" />
+            <div className="header-text">
+              <h1>🎯 Virtual Data Analyst</h1>
+              <p>AI-Powered Ecommerce Analytics for Farmlokal</p>
+            </div>
+          </div>
+        </div>
       </header>
 
       <div className="controls">
@@ -45,7 +95,26 @@ export default function DashboardPage() {
           onChange={handleDateChange}
           className="date-input"
         />
+        <button 
+          onClick={handleRefresh}
+          disabled={syncing}
+          className="button button-primary"
+          title="Fetch latest data from Google APIs"
+        >
+          {syncing ? '🔄 Syncing...' : '🔄 Refresh Data'}
+        </button>
+        {lastSyncTime && (
+          <div className="sync-status">
+            Last synced: {lastSyncTime}
+          </div>
+        )}
       </div>
+
+      {syncMessage && (
+        <div className={`alert ${syncMessage.includes('✅') ? 'alert-success' : 'alert-danger'}`}>
+          {syncMessage}
+        </div>
+      )}
 
       {error && <div className="alert alert-danger">{error}</div>}
 
@@ -228,6 +297,7 @@ export default function DashboardPage() {
           margin-bottom: 30px;
           display: flex;
           gap: 10px;
+          align-items: center;
         }
 
         .date-input {
@@ -236,6 +306,40 @@ export default function DashboardPage() {
           border-radius: 6px;
           font-size: 1rem;
           cursor: pointer;
+        }
+
+        .button {
+          padding: 10px 20px;
+          border: none;
+          border-radius: 6px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          font-size: 1rem;
+        }
+
+        .button-primary {
+          background-color: var(--primary-color);
+          color: white;
+        }
+
+        .button-primary:hover:not(:disabled) {
+          background-color: #0052a3;
+          box-shadow: 0 4px 12px rgba(0, 102, 204, 0.3);
+        }
+
+        .button-primary:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .sync-status {
+          font-size: 0.9rem;
+          color: #666;
+          padding: 10px 15px;
+          background-color: #f0f0f0;
+          border-radius: 6px;
+          white-space: nowrap;
         }
 
         .dashboard-section {
