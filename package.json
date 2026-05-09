@@ -9,7 +9,6 @@
     "start": "next start",
     "lint": "next lint",
     "db:init": "node scripts/db-init.js",
-    "sync:now": "node jobs/daily-data-sync.ts",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
