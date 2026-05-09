@@ -1,0 +1,17 @@
+{
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install --legacy-peer-deps",
+  "framework": "nextjs",
+  "nodeVersion": "24.x",
+  "env": {
+    "DATABASE_URL": "@database_url",
+    "GOOGLE_CLIENT_ID": "@google_client_id",
+    "GOOGLE_CLIENT_SECRET": "@google_client_secret",
+    "GOOGLE_PROJECT_ID": "@google_project_id",
+    "GOOGLE_ANALYTICS_PROPERTY_ID": "@google_analytics_property_id",
+    "GOOGLE_ADS_CUSTOMER_ID": "@google_ads_customer_id",
+    "GOOGLE_SEARCH_CONSOLE_SITE_URL": "@google_search_console_site_url",
+    "OPENAI_API_KEY": "@openai_api_key"
+  }
+}
