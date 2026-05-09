@@ -57,7 +57,7 @@ export default function DashboardPage() {
         throw new Error('Sync request failed');
       }
 
-      const result = await response.json();
+      await response.json();
       const syncTime = new Date().toLocaleString();
       setLastSyncTime(syncTime);
       localStorage.setItem('lastSyncTime', syncTime);

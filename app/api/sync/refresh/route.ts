@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { DataSyncService } from '@/lib/services/data-sync.service';
-import { subDays, format } from 'date-fns';
+import { format } from 'date-fns';
 
 /**
  * POST /api/sync/refresh
@@ -16,7 +16,8 @@ export async function POST(request: NextRequest) {
     }
 
     const endDate = new Date();
-    const startDate = subDays(endDate, 30);
+    const startDate = new Date(endDate);
+    startDate.setDate(startDate.getDate() - 30);
 
     console.log(`Starting manual data refresh for ${format(startDate, 'yyyy-MM-dd')} to ${format(endDate, 'yyyy-MM-dd')}`);
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { DataSyncService } from '@/lib/services/data-sync.service';
-import { subDays, format } from 'date-fns';
+import { format } from 'date-fns';
 
 /**
  * GET /api/cron/daily-sync
@@ -19,7 +19,8 @@ export async function GET(request: NextRequest) {
     }
 
     const endDate = new Date();
-    const startDate = subDays(endDate, 7); // Sync last 7 days
+    const startDate = new Date(endDate);
+    startDate.setDate(startDate.getDate() - 7); // Sync last 7 days
 
     console.log(`Starting scheduled daily sync for ${format(startDate, 'yyyy-MM-dd')} to ${format(endDate, 'yyyy-MM-dd')}`);
 
