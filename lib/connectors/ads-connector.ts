@@ -1,5 +1,3 @@
-import { google } from 'googleapis';
-
 /**
  * Google Ads API Connector
  * Fetches campaign performance, cost data, and ad engagement metrics
@@ -19,6 +17,7 @@ export interface AdsMetrics {
   ctr: number;
   avgCpc: number;
   costPerConversion: number;
+  roas?: number;
 }
 
 export interface AdsCampaignSummary {
@@ -34,21 +33,17 @@ export interface AdsCampaignSummary {
 }
 
 class GoogleAdsConnector {
-  private customerId: string;
-  private client: any;
-
-  constructor(customerId: string, accessToken: string) {
-    this.customerId = customerId;
+  constructor(_customerId: string, _accessToken: string) {
     // In production, use google-ads-api library
-    this.client = null;
+    // For now, this is a placeholder implementation
   }
 
   /**
    * Fetch daily metrics across all campaigns
    */
   async getDailyMetrics(
-    startDate: string,
-    endDate: string
+    _startDate: string,
+    _endDate: string
   ): Promise<AdsMetrics[]> {
     try {
       // This would use the actual Google Ads API library
@@ -70,7 +65,7 @@ class GoogleAdsConnector {
   /**
    * Fetch campaign performance summary
    */
-  async getCampaignSummary(startDate: string, endDate: string): Promise<AdsCampaignSummary[]> {
+  async getCampaignSummary(_startDate: string, _endDate: string): Promise<AdsCampaignSummary[]> {
     try {
       const summaries: AdsCampaignSummary[] = [];
 
@@ -88,7 +83,7 @@ class GoogleAdsConnector {
   /**
    * Fetch conversion tracking data
    */
-  async getConversions(startDate: string, endDate: string): Promise<any[]> {
+  async getConversions(_startDate: string, _endDate: string): Promise<any[]> {
     try {
       const conversions: any[] = [];
 
@@ -106,8 +101,8 @@ class GoogleAdsConnector {
    * Compare organic search vs paid search performance
    */
   async getOrgnicVsPaidComparison(
-    startDate: string,
-    endDate: string
+    _startDate: string,
+    _endDate: string
   ): Promise<{ organic: any; paid: any }> {
     try {
       return {

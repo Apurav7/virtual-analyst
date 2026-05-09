@@ -1,5 +1,4 @@
 import { BetaAnalyticsDataClient } from '@google-analytics/data';
-import { google } from 'googleapis';
 
 /**
  * Google Analytics 4 API Connector

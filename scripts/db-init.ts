@@ -12,7 +12,7 @@ async function initDatabase() {
     const client = await pool.connect();
     
     // Split and execute schema statements
-    const statements = SCHEMA.split(';').filter(stmt => stmt.trim());
+    const statements = SCHEMA.split(';').filter((stmt: string) => stmt.trim());
     
     for (const statement of statements) {
       if (statement.trim()) {

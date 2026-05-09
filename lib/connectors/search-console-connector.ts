@@ -7,6 +7,7 @@ import axios from 'axios';
 
 export interface SearchMetrics {
   query: string;
+  page?: string;
   clicks: number;
   impressions: number;
   ctr: number;

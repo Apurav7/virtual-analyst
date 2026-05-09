@@ -1,4 +1,4 @@
-import { query, queryAll, queryOne } from '../db/client';
+import { query, queryAll } from '../db/client';
 import GAConnector from '../connectors/ga-connector';
 import GoogleAdsConnector from '../connectors/ads-connector';
 import SearchConsoleConnector from '../connectors/search-console-connector';
@@ -15,7 +15,7 @@ export class DataSyncService {
   private scConnector: SearchConsoleConnector;
   private insightsGenerator: InsightsGenerator;
 
-  constructor(gaToken: string, adsToken: string, scToken: string) {
+  constructor(_gaToken: string, adsToken: string, scToken: string) {
     this.gaConnector = new GAConnector(process.env.GOOGLE_ANALYTICS_PROPERTY_ID || '');
     this.adsConnector = new GoogleAdsConnector(
       process.env.GOOGLE_ADS_CUSTOMER_ID || '',

@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import DataSyncService from '@/lib/services/data-sync.service';
 
 /**
  * GET /api/data/metrics
