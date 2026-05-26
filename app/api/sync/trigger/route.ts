@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import DataSyncService from '@/lib/services/data-sync.service';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 /**
  * POST /api/sync/trigger
  * Manually trigger data sync

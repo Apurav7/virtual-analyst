@@ -5,8 +5,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
+    "build": "next build --no-lint",
+    "start": "node scripts/start-standalone.js",
     "lint": "next lint",
     "db:init": "node scripts/db-init.js",
     "type-check": "tsc --noEmit"
@@ -19,6 +19,8 @@
     "dotenv": "^16.3.1",
     "google-auth-library": "^9.0.0",
     "googleapis": "^118.0.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
     "next": "^14.0.0",
     "openai": "^4.26.0",
     "pg": "^8.11.0",

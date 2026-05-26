@@ -17,7 +17,7 @@ An AI-powered virtual analyst dashboard for ecommerce websites that measures use
 - **Backend**: Next.js API Routes + Node.js
 - **Database**: PostgreSQL (for historical data & aggregations)
 - **AI**: OpenAI API (GPT-4)
-- **Deployment**: Vercel
+- **Deployment**: Cloud Run or Vercel
 - **Data Sources**: Google APIs (Analytics, Ads, Search Console)
 
 ## Project Structure
@@ -96,9 +96,14 @@ Copy `.env.example` to `.env.local` and fill in your credentials:
 # Google APIs
 GOOGLE_CLIENT_ID=your_client_id
 GOOGLE_CLIENT_SECRET=your_client_secret
-GOOGLE_ANALYTICS_ID=your_ga_property_id
+GOOGLE_ANALYTICS_PROPERTY_ID=your_ga4_property_id
 GOOGLE_ADS_CUSTOMER_ID=your_ads_customer_id
 GOOGLE_SEARCH_CONSOLE_SITE_URL=https://yoursite.com
+
+# Service account used by the live GA4 dashboard
+GOOGLE_SERVICE_ACCOUNT_KEY=/absolute/path/to/service-account-key.json
+GOOGLE_SERVICE_ACCOUNT_EMAIL=analyst@project.iam.gserviceaccount.com
+GOOGLE_PROJECT_ID=your_google_project_id
 
 # Database
 DATABASE_URL=postgresql://user:password@localhost:5432/analyst_db
@@ -124,6 +129,18 @@ npm run dev
 ```
 
 Visit `http://localhost:3000/dashboard`
+
+### Live GA4 Dashboard Setup
+
+The dashboard now reads directly from GA4 for the date-range overview and natural-language analytics queries.
+
+1. Enable the Google Analytics Data API in your Google Cloud project.
+2. For local use, either run `gcloud auth application-default login` or create a service account.
+3. For Cloud Run, attach a service account to the service instead of downloading a JSON key.
+4. Add the Google identity you use to the GA4 property with at least Viewer access.
+5. Set `GOOGLE_ANALYTICS_PROPERTY_ID` and `GOOGLE_PROJECT_ID` in `.env.local`.
+
+Once configured, the dashboard can answer questions such as users from Delhi yesterday, top cities by users, and cities driving purchases.
 
 ## Data Flow
 
@@ -163,6 +180,68 @@ The virtual analyst runs a daily job that:
 - Content performance insights
 - Seasonal trend analysis
 
+## Deployment to Cloud Run
+
+This repo is now configured for Cloud Run with:
+- standalone Next.js output in [next.config.js](c:/Users/apura/OneDrive/Documents/VS%20Projects/ecommerce-virtual-analyst/next.config.js)
+- container image build in [Dockerfile](c:/Users/apura/OneDrive/Documents/VS%20Projects/ecommerce-virtual-analyst/Dockerfile)
+- Cloud Build upload filtering in [.gcloudignore](c:/Users/apura/OneDrive/Documents/VS%20Projects/ecommerce-virtual-analyst/.gcloudignore)
+
+### 1. Create a runtime service account
+
+Create a Google service account that Cloud Run will use at runtime. Grant it:
+- access to the GA4 property in GA Admin
+- any database or secret access your app needs
+
+Example:
+
+```bash
+gcloud iam service-accounts create ecommerce-virtual-analyst \
+  --display-name="Ecommerce Virtual Analyst"
+```
+
+### 2. Set required environment variables
+
+At minimum for the live GA4 dashboard:
+
+```env
+GOOGLE_ANALYTICS_PROPERTY_ID=123456789
+GOOGLE_PROJECT_ID=your-gcp-project-id
+NEXT_PUBLIC_APP_URL=https://your-service-url.run.app
+OPENAI_API_KEY=your-openai-key
+DATABASE_URL=your-postgres-connection-string
+SYNC_SECRET_KEY=choose-a-long-random-secret
+CRON_SECRET=choose-a-long-random-secret
+```
+
+Do not set `GOOGLE_SERVICE_ACCOUNT_KEY` on Cloud Run when you are using the attached runtime service account.
+
+### 3. Deploy
+
+Replace the placeholders and run:
+
+```bash
+gcloud run deploy ecommerce-virtual-analyst \
+  --source . \
+  --region asia-south1 \
+  --allow-unauthenticated \
+  --service-account ecommerce-virtual-analyst@YOUR_PROJECT_ID.iam.gserviceaccount.com \
+  --set-env-vars GOOGLE_ANALYTICS_PROPERTY_ID=YOUR_GA4_PROPERTY_ID,GOOGLE_PROJECT_ID=YOUR_PROJECT_ID,NEXT_PUBLIC_APP_URL=https://ecommerce-virtual-analyst-xxxxx-uc.a.run.app,OPENAI_API_KEY=YOUR_OPENAI_KEY,DATABASE_URL=YOUR_DATABASE_URL,SYNC_SECRET_KEY=YOUR_SYNC_SECRET,CRON_SECRET=YOUR_CRON_SECRET
+```
+
+If you prefer not to place secrets directly in the command, store them in Secret Manager and attach them to the service.
+
+### 4. Verify
+
+After deployment:
+1. Open `/dashboard`
+2. Confirm the source table loads live GA4 data
+3. Run a natural-language query like `Top cities from where I am getting users`
+
+### 5. Trigger scheduled syncs
+
+Cloud Run does not use the Vercel cron config. Use Cloud Scheduler to call `/api/cron/daily-sync` with the `Authorization: Bearer YOUR_CRON_SECRET` header.
+
 ## Deployment to Vercel
 
 ```bash
@@ -170,7 +249,7 @@ npm run build
 vercel deploy
 ```
 
-Configure environment variables in Vercel dashboard.
+Configure environment variables in Vercel dashboard. The live GA4 routes on Vercel still require a usable Google credential source; Cloud Run is the recommended deployment target when your org blocks service-account key creation.
 
 ## Database Schema Overview
 

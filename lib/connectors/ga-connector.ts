@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { BetaAnalyticsDataClient } from '@google-analytics/data';
 
 /**
@@ -37,13 +38,105 @@ export interface GAUserJourney {
   revenue: number;
 }
 
+export interface GAReportDimensionValue {
+  name: string;
+  value: string;
+}
+
+export interface GAReportRow {
+  dimensions: Record<string, string>;
+  metrics: Record<string, number>;
+}
+
+export interface GARunReportParams {
+  startDate: string;
+  endDate: string;
+  dimensions?: string[];
+  metrics: string[];
+  limit?: number;
+  orderBys?: any[];
+  dimensionFilter?: any;
+}
+
 class GAConnector {
   private client: BetaAnalyticsDataClient;
   private propertyId: string;
 
   constructor(propertyId: string) {
     this.propertyId = propertyId;
-    this.client = new BetaAnalyticsDataClient();
+    this.client = this.createClient();
+  }
+
+  private createClient() {
+    const keyReference = process.env.GOOGLE_SERVICE_ACCOUNT_KEY?.trim();
+    const inlineJson = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_JSON?.trim();
+    const options: Record<string, any> = {};
+
+    if (process.env.GOOGLE_PROJECT_ID) {
+      options.projectId = process.env.GOOGLE_PROJECT_ID;
+    }
+
+    if (inlineJson) {
+      const credentials = JSON.parse(inlineJson);
+      if (credentials.private_key) {
+        credentials.private_key = credentials.private_key.replace(/\\n/g, '\n');
+      }
+      options.credentials = credentials;
+    } else if (keyReference) {
+      if (keyReference.startsWith('{')) {
+        const credentials = JSON.parse(keyReference);
+        if (credentials.private_key) {
+          credentials.private_key = credentials.private_key.replace(/\\n/g, '\n');
+        }
+        options.credentials = credentials;
+      } else if (fs.existsSync(keyReference)) {
+        options.keyFilename = keyReference;
+      }
+    }
+
+    return new BetaAnalyticsDataClient(options);
+  }
+
+  ensureConfigured() {
+    if (!this.propertyId) {
+      throw new Error('Missing GOOGLE_ANALYTICS_PROPERTY_ID. Set it in .env.local before using the live GA4 dashboard.');
+    }
+  }
+
+  async runReport(params: GARunReportParams): Promise<GAReportRow[]> {
+    this.ensureConfigured();
+
+    const response = await this.client.runReport({
+      property: `properties/${this.propertyId}`,
+      dateRanges: [
+        {
+          startDate: params.startDate,
+          endDate: params.endDate,
+        },
+      ],
+      dimensions: (params.dimensions || []).map((name) => ({ name })),
+      metrics: params.metrics.map((name) => ({ name })),
+      limit: params.limit ? String(params.limit) : undefined,
+      orderBys: params.orderBys,
+      dimensionFilter: params.dimensionFilter,
+    });
+
+    const rows = response[0]?.rows || [];
+
+    return rows.map((row: any) => {
+      const dimensions = (params.dimensions || []).reduce<Record<string, string>>((acc, name, index) => {
+        acc[name] = row.dimensionValues?.[index]?.value || '';
+        return acc;
+      }, {});
+
+      const metrics = params.metrics.reduce<Record<string, number>>((acc, name, index) => {
+        const rawValue = row.metricValues?.[index]?.value;
+        acc[name] = rawValue === undefined || rawValue === null || rawValue === '' ? 0 : Number(rawValue);
+        return acc;
+      }, {});
+
+      return { dimensions, metrics };
+    });
   }
 
   /**
@@ -159,16 +252,18 @@ class GAConnector {
   private parseTrafficResponse(response: any): GATrafficMetrics[] {
     const metrics: GATrafficMetrics[] = [];
 
-    if (!response.rows) return metrics;
+    const rows = response[0]?.rows || response.rows || [];
 
-    response.rows.forEach((row: any) => {
+    if (!rows.length) return metrics;
+
+    rows.forEach((row: any) => {
       metrics.push({
         date: row.dimensionValues[0].value,
         source: row.dimensionValues[1].value,
         users: parseInt(row.metricValues[0].value),
         newUsers: parseInt(row.metricValues[1].value),
         sessions: parseInt(row.metricValues[2].value),
-        bounceRate: parseFloat(row.metricValues[3].value),
+        bounceRate: parseFloat(row.metricValues[3].value) * 100,
         avgSessionDuration: parseFloat(row.metricValues[4].value),
         eventCount: parseInt(row.metricValues[5].value),
       });
@@ -183,9 +278,11 @@ class GAConnector {
   private parseConversionResponse(response: any): GAConversionMetrics[] {
     const metrics: GAConversionMetrics[] = [];
 
-    if (!response.rows) return metrics;
+    const rows = response[0]?.rows || response.rows || [];
 
-    response.rows.forEach((row: any) => {
+    if (!rows.length) return metrics;
+
+    rows.forEach((row: any) => {
       const transactions = parseInt(row.metricValues[0].value) || 0;
       const revenue = parseFloat(row.metricValues[1].value) || 0;
       const events = parseInt(row.metricValues[2].value) || 1;
@@ -208,8 +305,8 @@ class GAConnector {
    */
   private parseEngagementResponse(response: any): Record<string, any> {
     return {
-      rows: response.rows || [],
-      totalUsers: response.metadata?.currencyCode,
+      rows: response[0]?.rows || response.rows || [],
+      totalUsers: response[0]?.metadata?.currencyCode || response.metadata?.currencyCode,
     };
   }
 }

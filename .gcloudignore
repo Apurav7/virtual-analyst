@@ -1,0 +1,13 @@
+.git
+.gitignore
+.next
+node_modules
+npm-debug.log
+.env
+.env.local
+.env.*.local
+coverage
+README.md
+PROJECT_SUMMARY.md
+DATABASE.md
+SYNC_SETUP.md

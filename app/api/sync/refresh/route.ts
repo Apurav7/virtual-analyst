@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { DataSyncService } from '@/lib/services/data-sync.service';
 import { format } from 'date-fns';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 /**
  * POST /api/sync/refresh
  * On-demand data refresh from Google APIs

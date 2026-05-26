@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { queryAll } from '@/lib/db/client';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 /**
  * GET /api/dashboard
  * Fetch dashboard data for a specific date

@@ -82,6 +82,8 @@ GOOGLE_SEARCH_CONSOLE_SITE_URL=https://yoursite.com
 # Service Account
 GOOGLE_SERVICE_ACCOUNT_KEY=/path/to/service-account-key.json
 GOOGLE_SERVICE_ACCOUNT_EMAIL=analyst@project.iam.gserviceaccount.com
+# Optional if you prefer inline JSON instead of a file path:
+# GOOGLE_SERVICE_ACCOUNT_KEY_JSON={"type":"service_account",...}
 
 # Database
 DATABASE_URL=postgresql://user:password@host:5432/analyst_db
@@ -106,6 +108,8 @@ DATA_SYNC_BATCH_SIZE=1000
 DATA_SYNC_MAX_RETRIES=3
 SYNC_SECRET_KEY=your-secret-key-for-manual-sync
 ```
+
+For the live GA4 dashboard in `/dashboard`, make sure the service-account email has access to the GA4 property and `GOOGLE_ANALYTICS_PROPERTY_ID` matches that property exactly.
 
 ### 5. Initialize Database
 

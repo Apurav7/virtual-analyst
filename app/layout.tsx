@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Virtual Analyst - Ecommerce Analytics Dashboard',
-  description: 'AI-powered analytics dashboard for measuring user performance from organic search and paid ads',
+  title: 'Extempore Companion for Parents and Students',
+  description: 'A bilingual website for Indian parents and students to prepare class-wise extempore content in Hindi or English with word meanings.',
 };
 
 export default function RootLayout({
@@ -13,7 +13,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>
+      <body className="site-body">
         <div className="dashboard-wrapper">
           {children}
         </div>

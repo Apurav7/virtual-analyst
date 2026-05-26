@@ -1,425 +1,651 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
+
+interface OverviewMetricSummary {
+  users: number;
+  pageViews: number;
+  avgSessionDuration: number;
+  bounceRate: number;
+  purchases: number;
+}
+
+interface OverviewRow {
+  source?: string;
+  city?: string;
+  users: number;
+  pageViews: number;
+  avgSessionDuration?: number;
+  bounceRate?: number;
+  purchases: number;
+}
+
+interface OverviewResponse {
+  dateRange: {
+    startDate: string;
+    endDate: string;
+  };
+  summary: OverviewMetricSummary;
+  bySource: OverviewRow[];
+  topCities: OverviewRow[];
+}
+
+interface QueryChart {
+  xKey: string;
+  metricKey: string;
+  label: string;
+}
+
+interface QueryResponse {
+  answer: string;
+  columns: string[];
+  rows: Array<Record<string, string | number>>;
+  chart: QueryChart | null;
+}
+
+const exampleQueries = [
+  'How many users came from Delhi yesterday, and what was their bounce rate?',
+  'Top cities from where I am getting users',
+  'From which city am I getting purchases?',
+  'Which traffic source gave me the most page views in the last 7 days?',
+];
+
+function formatDateInput(date: Date) {
+  return date.toISOString().split('T')[0];
+}
+
+function formatNumber(value: number) {
+  return new Intl.NumberFormat('en-US').format(Math.round(value || 0));
+}
+
+function formatPercent(value: number) {
+  return `${(value || 0).toFixed(1)}%`;
+}
+
+function formatDuration(value: number) {
+  const totalSeconds = Math.round(value || 0);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  if (minutes <= 0) {
+    return `${seconds}s`;
+  }
+
+  return `${minutes}m ${seconds}s`;
+}
+
+function formatCellValue(column: string, value: string | number | undefined) {
+  if (value === undefined) {
+    return '-';
+  }
+
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (column.toLowerCase().includes('bounce rate')) {
+    return formatPercent(value);
+  }
+
+  if (column.toLowerCase().includes('duration')) {
+    return formatDuration(value);
+  }
+
+  return formatNumber(value);
+}
 
 export default function DashboardPage() {
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [dashboardData, setDashboardData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [syncing, setSyncing] = useState(false);
-  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
-  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [startDate, setStartDate] = useState(() => {
+    const date = new Date();
+    date.setDate(date.getDate() - 6);
+    return formatDateInput(date);
+  });
+  const [endDate, setEndDate] = useState(() => formatDateInput(new Date()));
+  const [overview, setOverview] = useState<OverviewResponse | null>(null);
+  const [overviewLoading, setOverviewLoading] = useState(true);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
+  const [question, setQuestion] = useState(exampleQueries[0]);
+  const [queryLoading, setQueryLoading] = useState(false);
+  const [queryError, setQueryError] = useState<string | null>(null);
+  const [queryResult, setQueryResult] = useState<QueryResponse | null>(null);
 
   useEffect(() => {
-    const fetchDashboardData = async () => {
+    const controller = new AbortController();
+
+    async function loadOverview() {
       try {
-        setLoading(true);
-        const response = await fetch(`/api/dashboard?date=${date}`);
-        if (!response.ok) throw new Error('Failed to fetch data');
-        const data = await response.json();
-        setDashboardData(data);
-        setError(null);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred');
+        setOverviewLoading(true);
+        setOverviewError(null);
+
+        const response = await fetch(
+          `/api/ga4/overview?startDate=${startDate}&endDate=${endDate}`,
+          { signal: controller.signal }
+        );
+
+        const payload = await response.json();
+
+        if (!response.ok) {
+          throw new Error(payload.message || payload.error || 'Failed to load GA4 overview');
+        }
+
+        setOverview(payload);
+      } catch (error) {
+        if ((error as Error).name === 'AbortError') {
+          return;
+        }
+
+        setOverviewError(error instanceof Error ? error.message : 'Failed to load GA4 overview');
       } finally {
-        setLoading(false);
+        setOverviewLoading(false);
       }
-    };
-
-    fetchDashboardData();
-    
-    // Load last sync time from localStorage
-    const savedSyncTime = localStorage.getItem('lastSyncTime');
-    if (savedSyncTime) {
-      setLastSyncTime(savedSyncTime);
     }
-  }, [date]);
 
-  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setDate(e.target.value);
-  };
+    loadOverview();
 
-  const handleRefresh = async () => {
+    return () => controller.abort();
+  }, [startDate, endDate]);
+
+  async function handleAskQuestion(nextQuestion?: string) {
+    const prompt = (nextQuestion || question).trim();
+
+    if (!prompt) {
+      setQueryError('Enter a question to query GA4 data.');
+      return;
+    }
+
     try {
-      setSyncing(true);
-      setSyncMessage(null);
-      
-      const response = await fetch('/api/sync/refresh', {
+      setQueryLoading(true);
+      setQueryError(null);
+
+      const response = await fetch('/api/ga4/query', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_SYNC_KEY || 'dev-key'}`
-        }
+        },
+        body: JSON.stringify({
+          question: prompt,
+          startDate,
+          endDate,
+        }),
       });
 
+      const payload = await response.json();
+
       if (!response.ok) {
-        throw new Error('Sync request failed');
+        throw new Error(payload.message || payload.error || 'Failed to query GA4');
       }
 
-      await response.json();
-      const syncTime = new Date().toLocaleString();
-      setLastSyncTime(syncTime);
-      localStorage.setItem('lastSyncTime', syncTime);
-      setSyncMessage('✅ Data synced successfully! Refresh the page to see latest data.');
-      
-      // Auto-refresh dashboard data after sync
-      setTimeout(() => {
-        window.location.reload();
-      }, 2000);
-    } catch (err) {
-      setSyncMessage(`❌ Sync failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setQuestion(prompt);
+      setQueryResult(payload);
+    } catch (error) {
+      setQueryError(error instanceof Error ? error.message : 'Failed to query GA4');
     } finally {
-      setSyncing(false);
+      setQueryLoading(false);
     }
-  };
+  }
 
   return (
-    <div className="dashboard-container">
-      <header className="dashboard-header">
-        <div className="header-content">
-          <div className="header-left">
-            <img src="https://www.farmlokal.com/logo.png" alt="Farmlokal" className="logo" />
-            <div className="header-text">
-              <h1>🎯 Virtual Data Analyst</h1>
-              <p>AI-Powered Ecommerce Analytics for Farmlokal</p>
-            </div>
-          </div>
+    <div className="dashboard-shell">
+      <section className="hero-panel">
+        <div>
+          <p className="eyebrow">Live GA4 dashboard</p>
+          <h1>Traffic, engagement, and city-level answers from Google Analytics 4</h1>
+          <p className="hero-copy">
+            This dashboard reads directly from GA4, shows last 7 day source-wise performance by default,
+            and lets you ask analytics questions in natural language.
+          </p>
         </div>
-      </header>
+        <div className="date-panel card">
+          <label>
+            <span>Start date</span>
+            <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className="date-input" />
+          </label>
+          <label>
+            <span>End date</span>
+            <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className="date-input" />
+          </label>
+          <p className="date-hint">Default range is the last 7 days. Natural-language questions reuse this range unless you ask for yesterday, today, or another last-N-days window.</p>
+        </div>
+      </section>
 
-      <div className="controls">
-        <input
-          type="date"
-          value={date}
-          onChange={handleDateChange}
-          className="date-input"
-        />
-        <button 
-          onClick={handleRefresh}
-          disabled={syncing}
-          className="button button-primary"
-          title="Fetch latest data from Google APIs"
-        >
-          {syncing ? '🔄 Syncing...' : '🔄 Refresh Data'}
-        </button>
-        {lastSyncTime && (
-          <div className="sync-status">
-            Last synced: {lastSyncTime}
+      {overviewError && (
+        <div className="alert alert-danger">
+          <strong>GA4 setup required.</strong> {overviewError}
+          <div className="setup-list">
+            <span>1. Create a Google service account with GA4 Data API access.</span>
+            <span>2. Add the service-account email to your GA4 property as a Viewer or Analyst.</span>
+            <span>3. Set GOOGLE_ANALYTICS_PROPERTY_ID and GOOGLE_SERVICE_ACCOUNT_KEY in .env.local.</span>
           </div>
-        )}
-      </div>
-
-      {syncMessage && (
-        <div className={`alert ${syncMessage.includes('✅') ? 'alert-success' : 'alert-danger'}`}>
-          {syncMessage}
         </div>
       )}
 
-      {error && <div className="alert alert-danger">{error}</div>}
-
-      {loading ? (
+      {overviewLoading ? (
         <div className="loading">
           <div className="spinner"></div>
-          <p>Loading analytics data...</p>
+          <p>Loading live GA4 overview...</p>
         </div>
-      ) : dashboardData ? (
+      ) : overview ? (
         <div className="dashboard-content">
-          {/* Key Metrics Section */}
           <section className="dashboard-section">
-            <h2>📊 Key Metrics</h2>
             <div className="grid grid-cols-4">
-              <div className="card metric-card">
-                <div className="metric-label">Total Users</div>
-                <div className="metric-value">
-                  {dashboardData.metrics?.reduce((sum: number, m: any) => sum + (m.users || 0), 0) || 0}
-                </div>
+              <div className="card stat-card">
+                <span className="metric-label">Users</span>
+                <strong className="metric-value">{formatNumber(overview.summary.users)}</strong>
               </div>
-              <div className="card metric-card">
-                <div className="metric-label">Total Transactions</div>
-                <div className="metric-value">
-                  {dashboardData.metrics?.reduce((sum: number, m: any) => sum + (m.transactions || 0), 0) || 0}
-                </div>
+              <div className="card stat-card">
+                <span className="metric-label">Page views</span>
+                <strong className="metric-value">{formatNumber(overview.summary.pageViews)}</strong>
               </div>
-              <div className="card metric-card">
-                <div className="metric-label">Total Revenue</div>
-                <div className="metric-value">
-                  ${(
-                    dashboardData.metrics?.reduce((sum: number, m: any) => sum + (m.revenue || 0), 0) || 0
-                  ).toFixed(2)}
-                </div>
+              <div className="card stat-card">
+                <span className="metric-label">Avg session duration</span>
+                <strong className="metric-value">{formatDuration(overview.summary.avgSessionDuration)}</strong>
               </div>
-              <div className="card metric-card">
-                <div className="metric-label">Avg Conversion Rate</div>
-                <div className="metric-value">
-                  {(
-                    dashboardData.metrics?.reduce((sum: number, m: any) => sum + (m.conversion_rate || 0), 0) /
-                      (dashboardData.metrics?.length || 1) || 0
-                  ).toFixed(2)}
-                  %
-                </div>
+              <div className="card stat-card">
+                <span className="metric-label">Bounce rate</span>
+                <strong className="metric-value">{formatPercent(overview.summary.bounceRate)}</strong>
               </div>
             </div>
           </section>
 
-          {/* Traffic Source Breakdown */}
+          <section className="dashboard-section split-layout">
+            <div className="card chart-card">
+              <div className="section-heading">
+                <h2>Users by source</h2>
+                <p>Last 7 days by default. Switch the date range above to change the window.</p>
+              </div>
+              <div className="chart-wrap">
+                <ResponsiveContainer width="100%" height={320}>
+                  <BarChart data={overview.bySource}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#d8d1c7" />
+                    <XAxis dataKey="source" stroke="#5f5347" tickLine={false} axisLine={false} />
+                    <YAxis stroke="#5f5347" tickLine={false} axisLine={false} />
+                    <Tooltip />
+                    <Bar dataKey="users" fill="#d97b2d" radius={[8, 8, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="card query-card">
+              <div className="section-heading">
+                <h2>Ask GA4 in plain English</h2>
+                <p>Examples: users from Delhi yesterday, top cities, city-wise purchases, or source-wise page views.</p>
+              </div>
+              <textarea
+                value={question}
+                onChange={(event) => setQuestion(event.target.value)}
+                className="question-input"
+                rows={5}
+                placeholder="Ask a GA4 question..."
+              />
+              <div className="example-list">
+                {exampleQueries.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    className="example-chip"
+                    onClick={() => {
+                      setQuestion(item);
+                      void handleAskQuestion(item);
+                    }}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+              <button type="button" className="button button-primary ask-button" onClick={() => void handleAskQuestion()} disabled={queryLoading}>
+                {queryLoading ? 'Querying GA4...' : 'Ask question'}
+              </button>
+              {queryError && <div className="alert alert-danger query-alert">{queryError}</div>}
+            </div>
+          </section>
+
           <section className="dashboard-section">
-            <h2>🔍 Traffic by Source</h2>
             <div className="card">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Traffic Source</th>
-                    <th>Users</th>
-                    <th>Sessions</th>
-                    <th>Bounce Rate</th>
-                    <th>Avg Duration</th>
-                    <th>Transactions</th>
-                    <th>Revenue</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dashboardData.metrics?.length > 0 ? (
-                    dashboardData.metrics.map((metric: any, idx: number) => (
-                      <tr key={idx}>
-                        <td className="source-badge">{metric.traffic_source}</td>
-                        <td>{metric.users || 0}</td>
-                        <td>{metric.sessions || 0}</td>
-                        <td>{(metric.bounce_rate || 0).toFixed(2)}%</td>
-                        <td>{((metric.avg_session_duration || 0) / 60).toFixed(1)}m</td>
-                        <td>{metric.transactions || 0}</td>
-                        <td>${(metric.revenue || 0).toFixed(2)}</td>
-                      </tr>
-                    ))
-                  ) : (
+              <div className="section-heading">
+                <h2>Source-wise performance</h2>
+                <p>Users, page views, average session duration, bounce rate, and purchases for the selected date range.</p>
+              </div>
+              <div className="table-wrap">
+                <table>
+                  <thead>
                     <tr>
-                      <td colSpan={7} style={{ textAlign: 'center', color: '#999' }}>
-                        No data available
-                      </td>
+                      <th>Source</th>
+                      <th>Users</th>
+                      <th>Page views</th>
+                      <th>Avg session duration</th>
+                      <th>Bounce rate</th>
+                      <th>Purchases</th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {overview.bySource.map((row) => (
+                      <tr key={row.source}>
+                        <td>{row.source || 'Unassigned'}</td>
+                        <td>{formatNumber(row.users)}</td>
+                        <td>{formatNumber(row.pageViews)}</td>
+                        <td>{formatDuration(row.avgSessionDuration || 0)}</td>
+                        <td>{formatPercent(row.bounceRate || 0)}</td>
+                        <td>{formatNumber(row.purchases)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </section>
 
-          {/* AI Insights */}
-          <section className="dashboard-section">
-            <h2>💡 AI-Powered Insights</h2>
-            <div className="insights-grid">
-              {dashboardData.insights?.length > 0 ? (
-                dashboardData.insights.map((insight: any, idx: number) => (
-                  <div key={idx} className="card insight-card">
-                    <div className="insight-header">
-                      <h3>{insight.title}</h3>
-                      <span className={`priority-badge priority-${insight.priority}`}>{insight.priority}</span>
+          <section className="dashboard-section split-layout bottom-layout">
+            <div className="card">
+              <div className="section-heading">
+                <h2>Top cities</h2>
+                <p>City-wise user and purchase signals from GA4.</p>
+              </div>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>City</th>
+                      <th>Users</th>
+                      <th>Page views</th>
+                      <th>Purchases</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {overview.topCities.map((row) => (
+                      <tr key={row.city}>
+                        <td>{row.city || 'Unknown'}</td>
+                        <td>{formatNumber(row.users)}</td>
+                        <td>{formatNumber(row.pageViews)}</td>
+                        <td>{formatNumber(row.purchases)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="card query-results-card">
+              <div className="section-heading">
+                <h2>Answer output</h2>
+                <p>The dashboard maps your wording to GA4 dimensions and metrics, then renders the result.</p>
+              </div>
+              {queryResult ? (
+                <>
+                  <div className="answer-banner">{queryResult.answer}</div>
+                  {queryResult.chart && queryResult.rows.length > 1 && (
+                    <div className="chart-wrap small-chart">
+                      <ResponsiveContainer width="100%" height={240}>
+                        <BarChart data={queryResult.rows}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#d8d1c7" />
+                          <XAxis dataKey={queryResult.chart.xKey} stroke="#5f5347" tickLine={false} axisLine={false} />
+                          <YAxis stroke="#5f5347" tickLine={false} axisLine={false} />
+                          <Tooltip />
+                          <Bar dataKey={queryResult.chart.metricKey} fill="#215f5b" radius={[8, 8, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
                     </div>
-                    <p className="insight-text">{insight.insight_text}</p>
-                    <div className="insight-recommendation">
-                      <strong>✅ Recommendation:</strong> {insight.recommendation}
-                    </div>
-                    <div className="insight-impact">Impact Score: {insight.impact_score}/100</div>
+                  )}
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          {queryResult.columns.map((column) => (
+                            <th key={column}>{column}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {queryResult.rows.map((row, index) => (
+                          <tr key={`${index}-${queryResult.columns[0] || 'row'}`}>
+                            {queryResult.columns.map((column) => (
+                              <td key={column}>{formatCellValue(column, row[column])}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                ))
+                </>
               ) : (
-                <div className="card">
-                  <p style={{ color: '#999' }}>Insights will be available after the daily sync completes</p>
+                <div className="empty-state">
+                  Ask one of the sample questions to see city-level or source-level GA4 results here.
                 </div>
               )}
-            </div>
-          </section>
-
-          {/* Top Keywords */}
-          <section className="dashboard-section">
-            <h2>🔑 Top Search Keywords</h2>
-            <div className="card">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Keyword</th>
-                    <th>Impressions</th>
-                    <th>Clicks</th>
-                    <th>CTR</th>
-                    <th>Avg Position</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dashboardData.keywords?.length > 0 ? (
-                    dashboardData.keywords.slice(0, 15).map((keyword: any, idx: number) => (
-                      <tr key={idx}>
-                        <td>{keyword.keyword}</td>
-                        <td>{keyword.impressions || 0}</td>
-                        <td>{keyword.clicks || 0}</td>
-                        <td>{(keyword.ctr || 0).toFixed(2)}%</td>
-                        <td>{(keyword.avg_position || 0).toFixed(1)}</td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={5} style={{ textAlign: 'center', color: '#999' }}>
-                        No keyword data available
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
             </div>
           </section>
         </div>
       ) : null}
 
       <style jsx>{`
-        .dashboard-container {
-          max-width: 1400px;
+        .dashboard-shell {
+          max-width: 1380px;
           margin: 0 auto;
+          padding-bottom: 48px;
         }
 
-        .dashboard-header {
-          background: linear-gradient(135deg, #0066cc 0%, #00d4ff 100%);
-          color: white;
-          padding: 40px 20px;
-          border-radius: 12px;
-          margin-bottom: 30px;
-          text-align: center;
-        }
-
-        .dashboard-header h1 {
-          font-size: 2.5rem;
-          margin-bottom: 10px;
-        }
-
-        .dashboard-header p {
-          font-size: 1.1rem;
-          opacity: 0.9;
-        }
-
-        .controls {
-          margin-bottom: 30px;
-          display: flex;
-          gap: 10px;
-          align-items: center;
-        }
-
-        .date-input {
-          padding: 10px 15px;
-          border: 2px solid var(--border-color);
-          border-radius: 6px;
-          font-size: 1rem;
-          cursor: pointer;
-        }
-
-        .button {
-          padding: 10px 20px;
-          border: none;
-          border-radius: 6px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.3s ease;
-          font-size: 1rem;
-        }
-
-        .button-primary {
-          background-color: var(--primary-color);
-          color: white;
-        }
-
-        .button-primary:hover:not(:disabled) {
-          background-color: #0052a3;
-          box-shadow: 0 4px 12px rgba(0, 102, 204, 0.3);
-        }
-
-        .button-primary:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
-
-        .sync-status {
-          font-size: 0.9rem;
-          color: #666;
-          padding: 10px 15px;
-          background-color: #f0f0f0;
-          border-radius: 6px;
-          white-space: nowrap;
-        }
-
-        .dashboard-section {
-          margin-bottom: 40px;
-        }
-
-        .dashboard-section h2 {
-          margin-bottom: 20px;
-          color: var(--text-color);
-        }
-
-        .insights-grid {
+        .hero-panel {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-          gap: 20px;
+          grid-template-columns: 1.4fr 0.9fr;
+          gap: 24px;
+          margin-bottom: 28px;
+          padding: 28px;
+          border-radius: 28px;
+          background:
+            radial-gradient(circle at top left, rgba(217, 123, 45, 0.22), transparent 36%),
+            linear-gradient(135deg, #f3ede4 0%, #e6dccd 48%, #d6c7b5 100%);
+          box-shadow: 0 24px 48px rgba(82, 63, 41, 0.14);
         }
 
-        .insight-card {
-          border-left: 4px solid var(--primary-color);
-        }
-
-        .insight-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: start;
+        .eyebrow {
           margin-bottom: 10px;
+          text-transform: uppercase;
+          letter-spacing: 0.14em;
+          font-size: 0.74rem;
+          font-weight: 700;
+          color: #8d5226;
         }
 
-        .insight-header h3 {
-          flex: 1;
+        .hero-panel h1 {
+          max-width: 12ch;
+          margin-bottom: 14px;
+          font-size: clamp(2.4rem, 5vw, 4rem);
+          line-height: 0.96;
+          color: #2f241a;
         }
 
-        .priority-badge {
-          padding: 4px 12px;
-          border-radius: 20px;
-          font-size: 0.75rem;
+        .hero-copy {
+          max-width: 58ch;
+          font-size: 1rem;
+          line-height: 1.7;
+          color: #4a3d33;
+        }
+
+        .date-panel {
+          display: grid;
+          gap: 16px;
+          align-content: start;
+          border: 1px solid rgba(77, 58, 40, 0.08);
+          background: rgba(255, 252, 247, 0.88);
+        }
+
+        .date-panel label {
+          display: grid;
+          gap: 8px;
           font-weight: 600;
-          white-space: nowrap;
+          color: #43352a;
         }
 
-        .priority-high {
-          background-color: #ffe0e0;
-          color: #c92a2a;
+        .date-panel span {
+          font-size: 0.9rem;
         }
 
-        .priority-medium {
-          background-color: #fff3cd;
-          color: #ff8787;
+        .date-hint {
+          font-size: 0.88rem;
+          line-height: 1.6;
+          color: #6b5b4d;
         }
 
-        .priority-low {
-          background-color: #e8f4f8;
-          color: #0066cc;
+        .stat-card {
+          min-height: 148px;
+          border: 1px solid rgba(82, 63, 41, 0.08);
+          background: linear-gradient(180deg, #fffdf8 0%, #f6efe5 100%);
         }
 
-        .insight-text {
-          margin-bottom: 12px;
-          color: #555;
+        .split-layout {
+          display: grid;
+          grid-template-columns: 1.15fr 0.85fr;
+          gap: 24px;
+        }
+
+        .bottom-layout {
+          align-items: start;
+        }
+
+        .section-heading {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          margin-bottom: 18px;
+        }
+
+        .section-heading p {
+          color: #6f6358;
+          line-height: 1.5;
+        }
+
+        .chart-card,
+        .query-card,
+        .query-results-card {
+          min-height: 100%;
+        }
+
+        .chart-wrap {
+          width: 100%;
+          min-height: 320px;
+        }
+
+        .small-chart {
+          min-height: 240px;
+          margin-bottom: 8px;
+        }
+
+        .question-input {
+          width: 100%;
+          border: 1px solid #d6c5b1;
+          border-radius: 16px;
+          padding: 16px;
+          font: inherit;
+          line-height: 1.6;
+          resize: vertical;
+          background: #fffdf8;
+        }
+
+        .question-input:focus {
+          outline: none;
+          border-color: #d97b2d;
+          box-shadow: 0 0 0 4px rgba(217, 123, 45, 0.12);
+        }
+
+        .example-list {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          margin-top: 14px;
+        }
+
+        .example-chip {
+          border-radius: 999px;
+          border: 1px solid #d6c5b1;
+          background: #fff7ed;
+          color: #6c4a2d;
+          padding: 10px 14px;
+          text-align: left;
+          font-size: 0.86rem;
+        }
+
+        .example-chip:hover {
+          border-color: #d97b2d;
+          background: #ffe8cf;
+        }
+
+        .ask-button {
+          margin-top: 16px;
+          width: fit-content;
+          background: linear-gradient(135deg, #d97b2d 0%, #bb5f20 100%);
+        }
+
+        .ask-button:hover:not(:disabled) {
+          background: linear-gradient(135deg, #c56b22 0%, #9e4f1a 100%);
+        }
+
+        .table-wrap {
+          overflow-x: auto;
+        }
+
+        .answer-banner {
+          margin-bottom: 16px;
+          padding: 14px 16px;
+          border-radius: 16px;
+          background: linear-gradient(135deg, #ecf6f1 0%, #dff1ea 100%);
+          color: #18423e;
+          font-weight: 600;
           line-height: 1.6;
         }
 
-        .insight-recommendation {
-          background-color: #f0f9ff;
-          padding: 12px;
-          border-radius: 6px;
-          margin-bottom: 10px;
-          font-size: 0.9rem;
-          color: #0052a3;
+        .empty-state {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 220px;
+          border: 1px dashed #d6c5b1;
+          border-radius: 16px;
+          color: #6f6358;
+          text-align: center;
+          line-height: 1.6;
+          padding: 20px;
         }
 
-        .insight-impact {
-          font-size: 0.85rem;
-          color: #999;
+        .setup-list {
+          display: grid;
+          gap: 6px;
+          margin-top: 10px;
+          font-size: 0.92rem;
         }
 
-        .source-badge {
-          font-weight: 600;
-          padding: 8px 12px;
-          background-color: #f0f0f0;
-          border-radius: 4px;
+        .query-alert {
+          margin-top: 16px;
+          margin-bottom: 0;
+        }
+
+        @media (max-width: 1100px) {
+          .hero-panel,
+          .split-layout {
+            grid-template-columns: 1fr;
+          }
+        }
+
+        @media (max-width: 768px) {
+          .hero-panel {
+            padding: 22px;
+          }
+
+          .hero-panel h1 {
+            max-width: none;
+          }
+
+          .dashboard-shell {
+            padding-bottom: 28px;
+          }
         }
       `}</style>
     </div>
